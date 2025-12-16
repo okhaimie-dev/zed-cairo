@@ -1,6 +1,6 @@
 id = "cairo"
 name = "Cairo"
-version = "0.1.1"
+version = "0.1.2"
 schema_version = 1
 authors = [
     "Thomas Robert Butler IV trbiv@proton.me",
@@ -12,7 +12,7 @@ repository = "https://github.com/trbutler4/zed-cairo"
 
 [grammars.cairo]
 repository = "https://github.com/starkware-libs/tree-sitter-cairo"
-rev = "4c6a25680546761b80a710ead1dd34e76c203125"
+rev = "8dcd77dbe7f68b2cc661031dff224dfc17bdbaf4"
 
 [language_servers.cairo]
 name = "Cairo Language Server"

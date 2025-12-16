@@ -1,224 +1,372 @@
-;; ═══════════════════════════════════════════════════════════════════
-;;                         CAIRO SYNTAX HIGHLIGHTING
-;; ═══════════════════════════════════════════════════════════════════
+i; -------
+; Tree-Sitter doesn't allow overrides in regards to captures,
+; though it is possible to affect the child node of a captured
+; node. Thus, the approach here is to flip the order so that
+; overrides are unnecessary.
+; -------
 
-;; ─────────────── KEYWORDS & LANGUAGE CONSTRUCTS ───────────────────
-;; Core language keywords
-(
-  (identifier) @keyword
-  (#match? @keyword "^(enum|trait|type|const|extern|match|if|else|for|while|loop|break|continue|return|as)$")
+; -------
+; Types
+; -------
+
+(type_parameters
+  (type_identifier) @type.parameter)
+(constrained_type_parameter
+  left: (type_identifier) @type.parameter)
+
+; ---
+; Primitives
+; ---
+
+(primitive_type) @type.builtin
+(boolean_literal) @constant.builtin.boolean
+(numeric_literal) @constant.numeric.integer
+[
+  (string_literal)
+  (shortstring_literal)
+] @string
+[
+  (line_comment)
+] @comment
+
+; ---
+; Extraneous
+; ---
+
+(enum_variant (identifier) @type.enum.variant)
+
+(field_initializer
+  (field_identifier) @variable.other.member)
+(shorthand_field_initializer
+  (identifier) @variable.other.member)
+(shorthand_field_identifier) @variable.other.member
+
+
+; ---
+; Punctuation
+; ---
+
+[
+  "::"
+  "."
+  ";"
+  ","
+] @punctuation.delimiter
+
+[
+  "("
+  ")"
+  "["
+  "]"
+  "{"
+  "}"
+] @punctuation.bracket
+(type_arguments
+  [
+    "<"
+    ">"
+  ] @punctuation.bracket)
+(type_parameters
+  [
+    "<"
+    ">"
+  ] @punctuation.bracket)
+(closure_parameters
+  "|" @punctuation.bracket)
+
+; ---
+; Variables
+; ---
+
+(let_declaration
+  pattern: [
+    ((identifier) @variable)
+    ((tuple_pattern
+      (identifier) @variable))
+  ])
+
+; It needs to be anonymous to not conflict with `call_expression` further below.
+(_
+ value: (field_expression
+  value: (identifier)? @variable
+  field: (field_identifier) @variable.other.member))
+
+(parameter
+	pattern: (identifier) @variable.parameter)
+
+(closure_parameters
+	(identifier) @variable.parameter)
+; -------
+; Keywords
+; -------
+
+(for_expression
+  "for" @keyword.control.repeat)
+
+"in" @keyword.control
+
+[
+  "match"
+  "if"
+  "else"
+] @keyword.control.conditional
+
+[
+  "while"
+  "loop"
+] @keyword.control.repeat
+
+[
+  "break"
+  "continue"
+  "return"
+] @keyword.control.return
+
+"use" @keyword.control.import
+(mod_item "mod" @keyword.control.import !body)
+(use_as_clause "as" @keyword.control.import)
+
+
+[
+  (crate)
+  (super)
+  "as"
+  "pub"
+  "mod"
+  (extern)
+  (nopanic)
+
+  "impl"
+  "trait"
+  "of"
+
+  "default"
+] @keyword
+
+[
+  "struct"
+  "enum"
+  "type"
+] @keyword.storage.type
+
+"let" @keyword.storage
+"fn" @keyword.function
+
+(mutable_specifier) @keyword.storage.modifier.mut
+(ref_specifier) @keyword.storage.modifier.ref
+
+(snapshot_type "@" @keyword.storage.modifier.ref)
+
+[
+  "const"
+  (ref_specifier)
+] @keyword.storage.modifier
+
+; TODO: variable.mut to highlight mutable identifiers via locals.scm
+
+; -------
+; Constructors
+; -------
+; TODO: this is largely guesswork, remove it once we get actual info from locals.scm or r-a
+
+(struct_expression
+  name: (type_identifier) @constructor)
+
+(tuple_enum_pattern
+  type: [
+    (identifier) @constructor
+    (scoped_identifier
+      name: (identifier) @constructor)
+  ])
+(struct_pattern
+  type: [
+    ((type_identifier) @constructor)
+    (scoped_type_identifier
+      name: (type_identifier) @constructor)
+  ])
+(match_pattern
+  ((identifier) @constructor) (#match? @constructor "^[A-Z]"))
+(or_pattern
+  ((identifier) @constructor)
+  ((identifier) @constructor)
+  (#match? @constructor "^[A-Z]"))
+
+; -------
+; Guess Other Types
+; -------
+
+((identifier) @constant
+ (#match? @constant "^[A-Z][A-Z\\d_]*$"))
+
+; ---
+; PascalCase identifiers in call_expressions (e.g. `Ok()`)
+; are assumed to be enum constructors.
+; ---
+
+(call_expression
+  function: [
+    ((identifier) @constructor
+      (#match? @constructor "^[A-Z]"))
+    (scoped_identifier
+      name: ((identifier) @constructor
+        (#match? @constructor "^[A-Z]")))
+  ])
+
+; ---
+; PascalCase identifiers under a path which is also PascalCase
+; are assumed to be constructors if they have methods or fields.
+; ---
+
+(field_expression
+  value: (scoped_identifier
+    path: [
+      (identifier) @type
+      (scoped_identifier
+        name: (identifier) @type)
+    ]
+    name: (identifier) @constructor
+      (#match? @type "^[A-Z]")
+      (#match? @constructor "^[A-Z]")))
+
+; ---
+; Other PascalCase identifiers are assumed to be structs.
+; ---
+
+((identifier) @type
+  (#match? @type "^[A-Z]"))
+
+; -------
+; Functions
+; -------
+
+(call_expression
+  function: [
+    ((identifier) @function)
+    (scoped_identifier
+      name: (identifier) @function)
+    (field_expression
+      field: (field_identifier) @function)
+  ])
+(generic_function
+  function: [
+    ((identifier) @function)
+    (scoped_identifier
+      name: (identifier) @function)
+    (field_expression
+      field: (field_identifier) @function.method)
+  ])
+(function_item
+  (function
+    name: (identifier) @function))
+
+(function_signature_item
+  (function
+    name: (identifier) @function))
+
+(external_function_item
+  (function
+    name: (identifier) @function))
+
+; ---
+; Macros
+; ---
+
+(attribute
+  (identifier) @special
+  arguments: (token_tree (identifier) @type)
+  (#eq? @special "derive")
 )
 
-;; Function-specific keywords
-("fn") @keyword.function
-("impl") @keyword
-
-;; Declaration keywords
-("let") @keyword
-("ref") @keyword
-("mod") @namespace.keyword
-("use") @use.keyword
-("of") @keyword
-
-;; Mutability modifiers
-(mutable_specifier) @keyword.modifier
-
-;; ─────────────── MODULES & NAMESPACES ──────────────────────────────
-;; Module definitions
-(mod_item
-  name: (identifier) @namespace.definition)
-
-;; Use declarations
-(use_declaration
-  argument: [
-    (identifier)         @namespace
-    (scoped_identifier)  @namespace
+(attribute
+  (identifier) @function.macro)
+(attribute
+  [
+    (identifier) @function.macro
+    (scoped_identifier
+      name: (identifier) @function.macro)
   ]
-)
+  (token_tree (identifier) @function.macro)?)
 
-;; Use paths - intermediate segments
+(inner_attribute_item) @attribute
+
+(macro_invocation
+  macro: [
+    ((identifier) @function.macro)
+    (scoped_identifier
+      name: (identifier) @function.macro)
+  ]
+  "!" @function.macro)
+
+
+; -------
+; Operators
+; -------
+
+[
+  "*"
+  "->"
+  "=>"
+  "<="
+  "="
+  "=="
+  "!"
+  "!="
+  "%"
+  "%="
+  "@"
+  "&&"
+  "|"
+  "||"
+  "^"
+  "*"
+  "*="
+  "-"
+  "-="
+  "+"
+  "+="
+  "/"
+  "/="
+  ">"
+  "<"
+  ">="
+  ">>"
+  "<<"
+] @operator
+
+; -------
+; Paths
+; -------
+
+(use_declaration
+  argument: (identifier) @namespace)
+(use_wildcard
+  (identifier) @namespace)
+(mod_item
+  name: (identifier) @namespace)
+(scoped_use_list
+  path: (identifier)? @namespace)
+(use_list
+  (identifier) @namespace)
+(use_as_clause
+  path: (identifier)? @namespace
+  alias: (identifier) @namespace)
+
+; ---
+; Remaining Paths
+; ---
+
 (scoped_identifier
+  path: (identifier)? @namespace
+  name: (identifier) @namespace)
+(scoped_type_identifier
   path: (identifier) @namespace)
 
-;; Use paths - final segment
-(scoped_identifier
-  name: [
-    (identifier)        @type
-    (type_identifier)   @type
-  ])
+; -------
+; Remaining Identifiers
+; -------
 
-;; Brace-group imports: use foo::{Bar, baz::Qux, *}
-(use_list
-  (identifier) @type)
+"?" @special
 
-(use_list
-  (scoped_identifier
-    name: [
-      (identifier)       @type
-      (type_identifier)  @type
-    ]))
-
-;; ─────────────── TYPES & TYPE DEFINITIONS ──────────────────────────
-;; Primitive and built-in types
-(primitive_type) @type.builtin
 (type_identifier) @type
-(scoped_type_identifier) @type
-
-;; Struct definitions
-("struct") @type.keyword
-(struct_item
-  name: (type_identifier) @type.definition)
-
-;; Enum definitions
-("enum") @type.keyword
-(enum_item
-  name: (type_identifier) @type.definition)
-
-;; Implementation blocks
-(impl_item
-  (identifier) @type.definition
-  .)
-
-;; ─────────────── FUNCTIONS ─────────────────────────────────────────
-;; Function definitions
-(function
-  name: (identifier) @function.definition)
-
-;; Function calls - simple
-(call_expression
-  function: (identifier) @function.call)
-
-;; Function calls - path-qualified
-(call_expression
-  function: (scoped_identifier
-    name: (identifier) @function.call))
-
-;; Generic function calls
-(generic_function
-  function: (identifier) @function.call)
-
-;; Method calls
-(call_expression
-  function: (field_expression
-              field: (field_identifier) @function.call))
-
-;; ─────────────── VARIABLES & PARAMETERS ────────────────────────────
-;; Variable bindings in let declarations
-(let_declaration
-  pattern: (identifier) @variable)
-
-;; Function parameters
-(parameter
-  pattern: (identifier) @variable.parameter)
-
-;; Built-in variables (self)
-((identifier) @variable.builtin
- (#eq? @variable.builtin "self"))
-
-;; Field access and properties
-(field_expression
-  field: [
-    (field_identifier) @property
-    (identifier)       @property
-  ])
-
-;; Struct field identifiers
-(field_identifier) @property
-
-;; ─────────────── LITERALS ──────────────────────────────────────────
-(boolean_literal) @boolean
-(string_literal) @string
-(shortstring_literal) @string
-(numeric_literal) @number
-(negative_literal
-  (numeric_literal) @number)
-
-;; ─────────────── COMMENTS ──────────────────────────────────────────
-(line_comment) @comment
-
-;; ─────────────── OPERATORS ─────────────────────────────────────────
-;; Arrow operators
-("=>" @operator)
-("->" @operator)
-
-;; Assignment and comparison
-("=" @operator)
-("==" @operator)
-("!=" @operator)
-(">" @operator)
-("<" @operator)
-
-;; Arithmetic operators
-("+" @operator)
-("-" @operator)
-("*" @operator)
-("/" @operator)
-("%" @operator)
-
-;; Logical operators
-("&&" @operator)
-("||" @operator)
-("!" @operator)
-
-;; ─────────────── PUNCTUATION ───────────────────────────────────────
-;; Special punctuation
-("@" @punctuation.special)   ; snapshot marker
-("#" @punctuation.special)   ; attribute marker
-
-;; Delimiters
-("::" @punctuation.delimiter)
-("." @punctuation.delimiter)
-("," @punctuation.delimiter)
-(";" @punctuation.delimiter)
-(":" @punctuation.delimiter)
-
-;; Brackets
-("(" @punctuation.bracket)
-(")" @punctuation.bracket)
-("{" @punctuation.bracket)
-("}" @punctuation.bracket)
-("[" @punctuation.bracket)
-("]" @punctuation.bracket)
-
-;; ─────────────── MACROS ────────────────────────────────────────────
-(macro_invocation
-  macro: (identifier) @macro)
-
-;; ─────────────── ATTRIBUTES ────────────────────────────────────────
-;; Generic attributes
-(attribute
-  (identifier) @attribute)
-
-;; Cairo/Starknet-specific attributes
-(attribute
-  (identifier) @attribute
-  (#match? @attribute "^(storage|event|constructor|external|view|l1_handler|derive|starknet)$"))
-
-;; ─────────────── CAIRO-SPECIFIC PATTERNS ───────────────────────────
-;; Felt252 type (Cairo's primary type)
-((type_identifier) @type.builtin
- (#eq? @type.builtin "felt252"))
-
-;; Contract interface keyword
-((identifier) @keyword
- (#eq? @keyword "contract"))
-
-;; Storage variables pattern
-(attribute
-  (scoped_identifier
-    path: (identifier) @attribute
-    name: (identifier) @attribute)
-  (#eq? @attribute "storage"))
-
-;; Event definitions
-(attribute
-  (identifier) @attribute
-  (#eq? @attribute "event"))
-
-;; External function markers
-(attribute
-  (call_expression
-    function: (identifier) @attribute
-    arguments: (arguments
-      (identifier) @attribute))
-  (#match? @attribute "^(external|view)$"))
+(identifier) @variable
+(field_identifier) @variable.other.member
